@@ -1,0 +1,16 @@
+node_modules
+dist
+build
+out
+.DS_Store
+.eslintcache
+.idea
+.idea/*
+.vscode
+*.log*
+.editorconfig
+.prettierignore
+.prettierrc.yaml
+TODO.md
+.env
+src/renderer/src/App_last.tsx
