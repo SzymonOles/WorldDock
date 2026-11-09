@@ -9,7 +9,9 @@ export const getMapStyle = (tileSize: number) => ({
       tileSize: tileSize,
     }
   },
-  layers: [{ id: 'esri-satellite-layer', type: 'raster', source: 'esri-satellite', minzoom: 0, maxzoom: 20 }]
+  // maxzoom warstwy dotyczy zoomu kamery mapy (rośnie przy przybliżaniu sceny),
+  // a nie poziomu kafelków, więc musi być wysoki, inaczej obraz znika po przybliżeniu
+  layers: [{ id: 'esri-satellite-layer', type: 'raster', source: 'esri-satellite', minzoom: 0, maxzoom: 24 }]
 });
 
 export function getMetersPerPixel(latitude: number, zoom: number): number {

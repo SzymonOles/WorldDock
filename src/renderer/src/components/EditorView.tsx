@@ -1,9 +1,11 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import Map from 'react-map-gl/maplibre';
 import { Stage, Layer, Line, Circle, Group, Arrow } from 'react-konva';
 import Konva from 'konva';
 import { ViewState, StartPoint, Step } from '../types';
 import { getMapStyle, generateBoatPoints, generateBoomPoints } from '../utils/geoUtils';
+import { useElementSize } from '../utils/useElementSize';
+import { getCameraViewState, getLockedTileSize } from '../utils/mapCamera';
 
 interface EditorViewProps {
   viewState: ViewState;
@@ -41,9 +43,16 @@ export const EditorView: React.FC<EditorViewProps> = ({
                                                         viewState, tileSize, setTileSize, polygons, setPolygons, activePolyIdx, setActivePolyIdx,
                                                         startPoint, setStartPoint, creationStart, setCreationStart, undoStack, redoStack,
                                                         handleUndo, handleRedo, saveHistory, stageScale, setStageScale, stagePos, setStagePos,
-                                                        isPanning, setIsPanning, showControls, setShowControls, dimensions, editorMode,
+                                                        isPanning, setIsPanning, showControls, setShowControls, editorMode,
                                                         handleSave, setStep, getMetersPerPixel
                                                       }) => {
+
+  const { ref: viewportRef, size: viewport } = useElementSize<HTMLDivElement>();
+  const originX = viewport.width / 2;
+  const originY = viewport.height / 2;
+  const cameraView = getCameraViewState(viewState, stagePos, stageScale, originX, originY);
+  const lockedTileSize = getLockedTileSize(viewState.zoom, tileSize, cameraView.zoom);
+  const mapStyle = useMemo(() => getMapStyle(lockedTileSize), [lockedTileSize]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -68,8 +77,8 @@ export const EditorView: React.FC<EditorViewProps> = ({
     const stage = e.target.getStage();
     const pointer = stage.getPointerPosition();
     if (!pointer) return;
-    const x = (pointer.x - stagePos.x) / stageScale;
-    const y = (pointer.y - stagePos.y) / stageScale;
+    const x = (pointer.x - stagePos.x) / stageScale - originX;
+    const y = (pointer.y - stagePos.y) / stageScale - originY;
 
     if (nativeEvent.button === 2) {
       setIsPanning(true);
@@ -159,10 +168,12 @@ export const EditorView: React.FC<EditorViewProps> = ({
       <header style={{ height: '70px', background: '#222', color: 'white', position: 'relative', display: 'flex', alignItems: 'center', padding: '0 15px', zIndex: 100, borderBottom: '1px solid #444', gap: '10px' }}>
         <button onClick={() => setStep(0)} style={{ padding: '8px 12px', background: '#444', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Wróć</button>
         <select value={tileSize} onChange={(e) => setTileSize(Number(e.target.value))} style={{ padding: '7px 8px', background: '#333', color: 'white', border: '1px solid #555', borderRadius: '4px' }}>
+          <option value={512}>Jakość: 512</option>
           <option value={256}>Jakość: 256</option>
           <option value={128}>Jakość: 128</option>
           <option value={64}>Jakość: 64</option>
           <option value={32}>Jakość: 32</option>
+          <option value={16}>Jakość: 16</option>
         </select>
 
         <div style={{ display: 'flex', flex: 1, justifyContent: 'center', gap: '10px', alignItems: 'center' }}>
@@ -172,7 +183,6 @@ export const EditorView: React.FC<EditorViewProps> = ({
             {showControls && (
               <div style={{ position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)', marginTop: '10px', background: '#333', padding: '15px', borderRadius: '8px', width: '365px', boxShadow: '0 10px 30px rgba(0,0,0,0.5)', border: '1px solid #555', zIndex: 100 }}>
                 <ul style={{ margin: 0, padding: 0, listStyle: 'none', fontSize: '12px', lineHeight: '1.8', color: '#eee' }}>
-                  <li>Template text replacement test</li>
                   <li><strong>PPM:</strong> Przesuwanie mapy</li>
                   <li><strong>LPM:</strong> Dodaj kolejny punkt</li>
                   <li><strong>LPM blisko linii:</strong> Wstaw punkt na linii</li>
@@ -203,12 +213,12 @@ export const EditorView: React.FC<EditorViewProps> = ({
         </div>
       </header>
 
-      <div style={{ flex: 1, position: 'relative', background: '#000' }}>
-        <div style={{ position: 'absolute', width: '100%', height: '100%', transform: `translate(${stagePos.x}px, ${stagePos.y}px) scale(${stageScale})`, transformOrigin: '0 0', pointerEvents: 'none' }}>
-          <Map interactive={false} {...viewState} mapStyle={getMapStyle(tileSize) as any} style={{ width: '100%', height: '100%' }} />
+      <div ref={viewportRef} style={{ flex: 1, position: 'relative', background: '#000', minHeight: 0, overflow: 'hidden' }}>
+        <div style={{ position: 'absolute', width: '100%', height: '100%', pointerEvents: 'none' }}>
+          <Map interactive={false} maxZoom={24} {...cameraView} mapStyle={mapStyle as any} style={{ width: '100%', height: '100%' }} />
         </div>
         <Stage
-          width={dimensions.width} height={dimensions.height - 70} onMouseDown={handleStageMouseDown}
+          width={viewport.width} height={viewport.height} onMouseDown={handleStageMouseDown}
           onMouseMove={(e) => isPanning && setStagePos(prev => ({ x: prev.x + e.evt.movementX, y: prev.y + e.evt.movementY }))}
           onMouseUp={() => setIsPanning(false)}
           onWheel={(e) => {
@@ -223,7 +233,7 @@ export const EditorView: React.FC<EditorViewProps> = ({
           }}
           onContextMenu={(e) => e.evt.preventDefault()}
         >
-          <Layer x={stagePos.x} y={stagePos.y} scaleX={stageScale} scaleY={stageScale}>
+          <Layer x={stagePos.x + originX * stageScale} y={stagePos.y + originY * stageScale} scaleX={stageScale} scaleY={stageScale}>
             {polygons.map((polyPoints, polyIdx) => (
               <Group key={polyIdx}>
                 <Line

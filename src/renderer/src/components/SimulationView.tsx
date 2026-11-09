@@ -1,8 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import Map from 'react-map-gl/maplibre';
 import { Stage, Layer, Line, Group } from 'react-konva';
 import { ViewState, StartPoint, PropHandedness, BoatPreset } from '../types';
 import { getMapStyle, getMetersPerPixel,lineSegmentsIntersect , getSimBoatPoints, getClosestWallVector, isPointInPolygon } from '../utils/geoUtils';
+import { useElementSize } from '../utils/useElementSize';
+import { getCameraViewState, getLockedTileSize } from '../utils/mapCamera';
 
 interface SimulationViewProps {
   viewState: ViewState;
@@ -18,8 +20,15 @@ interface SimulationViewProps {
 }
 
 export const SimulationView: React.FC<SimulationViewProps> = ({
-                                                                viewState, tileSize, polygons, startPoint, windDir, windSpeed, propHandedness, boatPreset, dimensions, onBack
+                                                                viewState, tileSize, polygons, startPoint, windDir, windSpeed, propHandedness, boatPreset, onBack
                                                               }) => {
+  const { ref: viewportRef, size: viewport } = useElementSize<HTMLDivElement>();
+  const originX = viewport.width / 2;
+  const originY = viewport.height / 2;
+  const cameraView = getCameraViewState(viewState, stagePos, stageScale, originX, originY);
+  const lockedTileSize = getLockedTileSize(viewState.zoom, tileSize, cameraView.zoom);
+  const mapStyle = useMemo(() => getMapStyle(lockedTileSize), [lockedTileSize]);
+
   const [simBoat, setSimBoat] = useState<{ x: number; y: number; rotation: number } | null>(null);
   const [throttle, setThrottle] = useState<number>(0);
   const [rudder, setRudder] = useState<number>(0);
@@ -34,6 +43,7 @@ export const SimulationView: React.FC<SimulationViewProps> = ({
   const currentRPMRef = useRef(0);
   const keysPressed = useRef<Set<string>>(new Set());
   const simStateRef = useRef({ x: 0, y: 0, rotation: 0, u: 0, v: 0, r: 0 });
+  const [showControls, setShowControls] = useState(false);
 
   const resetSimulation = () => {
     if (startPoint) {
@@ -237,21 +247,40 @@ export const SimulationView: React.FC<SimulationViewProps> = ({
     <div style={{ width: '100vw', height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative' }}>
       <header style={{ height: '70px', background: '#111', display: 'flex', alignItems: 'center', padding: '0 20px', borderBottom: '1px solid #333', zIndex: 100, gap: '15px' }}>
         <button onClick={onBack} style={{ padding: '8px 12px', background: '#444', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Wróć</button>
-        <button onClick={resetSimulation} style={{ padding: '8px 16px', background: '#dc3545', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>🔄 Resetuj</button>
+        <button onClick={resetSimulation} style={{ padding: '8px 16px', background: '#dc3545', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>Resetuj</button>
+
         <label style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#fff', fontSize: '13px', cursor: 'pointer', background: '#222', padding: '7px 14px', borderRadius: '4px', border: '1px solid #444' }}>
-          <input type="checkbox" checked={showMapBackground} onChange={(e) => setShowMapBackground(e.target.checked)} /> 🗺️ Pokaż mapę satelitarną
+          <input type="checkbox" checked={showMapBackground} onChange={(e) => setShowMapBackground(e.target.checked)} />Pokaż mapę satelitarną
         </label>
+
+        <div onMouseEnter={() => setShowControls(true)} onMouseLeave={() => setShowControls(false)} style={{ position: 'relative' }}>
+          <div style={{ background: '#007bff', color: 'white', padding: '8px 15px', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold', cursor: 'help' }}>Sterowanie</div>
+          {showControls && (
+            <div style={{ position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)', marginTop: '10px', background: '#333', padding: '15px', borderRadius: '8px', width: '365px', boxShadow: '0 10px 30px rgba(0,0,0,0.5)', border: '1px solid #555', zIndex: 100 }}>
+              <ul style={{ margin: 0, padding: 0, listStyle: 'none', fontSize: '12px', lineHeight: '1.8', color: '#eee' }}>
+                <li><strong>W / S / Kółko myszy:</strong> Sterowanie manetką gazu</li>
+                <li><strong>Kliknięcie kółkiem (ŚPM):</strong> Szybki luz (0% gazu)</li>
+                <li><strong>A / D / Strzałki:</strong> Skręcanie sterem</li>
+                <li><strong>Trzymanie LPM + Ruch myszą:</strong> Skręcanie sterem</li>
+                <li><strong>Shift + Kółko myszy:</strong> Przybliżanie / Oddalanie</li>
+                <li><strong>Trzymanie PPM + Ruch myszą:</strong> Przesuwanie kamery</li>
+                <hr style={{border: '0.5px solid #555', margin: '8px 0'}}/>
+              </ul>
+            </div>
+          )}
+        </div>
+        <h2 style={{ margin: 0, color: '#fff', fontSize: '18px', marginLeft: 'auto' }}>Ekran Symulacji</h2>
       </header>
 
-      <div style={{ flex: 1, position: 'relative', background: showMapBackground ? '#000' : '#1a3a5f' }}>
+      <div ref={viewportRef} style={{ flex: 1, position: 'relative', background: showMapBackground ? '#000' : '#1a3a5f', minHeight: 0, overflow: 'hidden' }}>
         {showMapBackground && (
-          <div style={{ position: 'absolute', width: '100%', height: '100%', transform: `translate(${stagePos.x}px, ${stagePos.y}px) scale(${stageScale})`, transformOrigin: '0 0', pointerEvents: 'none' }}>
-            <Map interactive={false} {...viewState} mapStyle={getMapStyle(tileSize) as any} style={{ width: '100%', height: '100%' }} />
+          <div style={{ position: 'absolute', width: '100%', height: '100%', pointerEvents: 'none' }}>
+            <Map interactive={false} maxZoom={24} {...cameraView} mapStyle={mapStyle as any} style={{ width: '100%', height: '100%' }} />
           </div>
         )}
 
         <Stage
-          width={dimensions.width} height={dimensions.height - 70}
+          width={viewport.width} height={viewport.height}
           onMouseDown={(e) => {
             if (e.evt.button === 0) setIsSteeringWithMouse(true);
             else if (e.evt.button === 1) { e.evt.preventDefault(); simThrottleRef.current = 0; setThrottle(0); }
@@ -281,7 +310,7 @@ export const SimulationView: React.FC<SimulationViewProps> = ({
             }
           }}
         >
-          <Layer x={stagePos.x} y={stagePos.y} scaleX={stageScale} scaleY={stageScale}>
+          <Layer x={stagePos.x + originX * stageScale} y={stagePos.y + originY * stageScale} scaleX={stageScale} scaleY={stageScale}>
             {polygons.map((polyPoints, polyIdx) => (
               <Line key={polyIdx} points={polyPoints} fill="rgba(255, 255, 255, 0.15)" stroke="rgba(255, 255, 255, 0.5)" strokeWidth={1 / stageScale} closed={polyPoints.length >= 6} />
             ))}
@@ -292,14 +321,6 @@ export const SimulationView: React.FC<SimulationViewProps> = ({
             )}
           </Layer>
         </Stage>
-
-        <div style={{ position: 'absolute', top: '20px', left: '20px', background: 'rgba(20, 20, 20, 0.9)', padding: '15px', borderRadius: '6px', color: '#eee', fontSize: '12px', fontFamily: 'monospace' }}>
-          <strong style={{ color: '#4CAF50' }}>TELEMETRIA({boatPreset === 'small' ? 'Mała' : 'Standard'}):</strong>
-          <div>⚡ RPM Silnika: <span style={{ color: '#ff9800' }}>{currentRPMRef.current.toFixed(0)}%</span></div>
-          <div>Węzeł u: <span>{simStateRef.current.u.toFixed(2)} m/s</span></div>
-          <div>Węzeł v: <span>{simStateRef.current.v.toFixed(2)} m/s</span></div>
-          <div>Yaw Rate (r): <span>{(simStateRef.current.r * (180 / Math.PI)).toFixed(1)} °/s</span></div>
-        </div>
 
         <div style={{ position: 'absolute', right: '30px', top: '50%', transform: 'translateY(-50%)', width: '65px', height: '260px', background: 'rgba(25, 25, 25, 0.9)', border: '2px solid #444', borderRadius: '8px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'space-between', padding: '15px 5px', color: 'white', fontFamily: 'monospace' }}>
           <div style={{ fontSize: '10px', color: '#ff4d4d' }}>NAPRZÓD</div>

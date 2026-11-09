@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, ipcMain } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, Menu } from 'electron'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
@@ -14,7 +14,6 @@ function createWindow(): void {
     width: 1200,
     height: 800,
     show: false,
-    autoHideMenuBar: true,
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -22,6 +21,7 @@ function createWindow(): void {
     }
   })
 
+  mainWindow.removeMenu()
   mainWindow.maximize()
 
   mainWindow.on('ready-to-show', () => {
@@ -41,6 +41,7 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  Menu.setApplicationMenu(null)
   ipcMain.handle('get-ports', async (_event, bounds) => {
     try {
       const { data, error } = await supabase
