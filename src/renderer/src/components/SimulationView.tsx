@@ -25,9 +25,6 @@ export const SimulationView: React.FC<SimulationViewProps> = ({
   const { ref: viewportRef, size: viewport } = useElementSize<HTMLDivElement>();
   const originX = viewport.width / 2;
   const originY = viewport.height / 2;
-  const cameraView = getCameraViewState(viewState, stagePos, stageScale, originX, originY);
-  const lockedTileSize = getLockedTileSize(viewState.zoom, tileSize, cameraView.zoom);
-  const mapStyle = useMemo(() => getMapStyle(lockedTileSize), [lockedTileSize]);
 
   const [simBoat, setSimBoat] = useState<{ x: number; y: number; rotation: number } | null>(null);
   const [throttle, setThrottle] = useState<number>(0);
@@ -37,6 +34,10 @@ export const SimulationView: React.FC<SimulationViewProps> = ({
   const [isSteeringWithMouse, setIsSteeringWithMouse] = useState(false);
   const [stageScale, setStageScale] = useState(1);
   const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
+
+  const cameraView = getCameraViewState(viewState, stagePos, stageScale, originX, originY);
+  const lockedTileSize = getLockedTileSize(viewState.zoom, tileSize, cameraView.zoom);
+  const mapStyle = useMemo(() => getMapStyle(lockedTileSize), [lockedTileSize]);
 
   const simThrottleRef = useRef(0);
   const simRudderRef = useRef(0);
